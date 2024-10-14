@@ -1,0 +1,56 @@
+services:
+  ollama:
+    container_name: ollama
+    image: ollama/ollama:${OLLAMA_DOCKER_TAG-latest}
+    pull_policy: always
+    volumes:
+      - ollama:/root/.ollama
+    tty: true
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  init-ollama:
+    image: curlimages/curl:latest
+    container_name: init-task
+    depends_on:
+      - ollama
+    command: >
+      /bin/sh -c "
+      echo 'Pulling images:';
+      curl -X POST http://ollama:11434/api/pull -d '{\"name\": \"llama3.2\"}';
+      echo 'Done';"
+    restart: "no"
+
+  chainlit:
+    build: ./app
+    container_name: chainlit
+    depends_on:
+      - ollama
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_API_URL=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL-llama3.2}
+      - SEARNGX_URL=http://searxng:8080
+    restart: unless-stopped
+
+  searxng:
+    container_name: searxng
+    image: searxng/searxng:${SEARXNG_DOCKER_TAG-latest}
+    volumes:
+      - ./searxng:/etc/searxng
+    ports:
+      - "8080:8080"
+    environment:
+      - BASE_URL=http://localhost:8080
+      - INSTANCE_NAME=${SEARXNG_NAME-searxng}
+
+volumes:
+  ollama: {}
+  # searxng: {}
